@@ -33,6 +33,9 @@ export default function Navbar() {
                 <Link href="/policies" className="text-sm text-gray-600 hover:text-gray-900">
                   Policies
                 </Link>
+                <Link href="/my-policies" className="text-sm text-gray-600 hover:text-gray-900">
+                  My Policies
+                </Link>
                 <button
                   onClick={handleLogout}
                   className="text-sm text-gray-600 hover:text-gray-900"

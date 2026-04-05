@@ -4,7 +4,9 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/providers/AuthProvider";
 import { getPolicy, deletePolicy } from "@/lib/policies";
+import { getAssignment, getAcknowledgment, acknowledgePolicy } from "@/lib/assignments";
 import type { Policy } from "@/types/policy";
+import type { Assignment, Acknowledgment } from "@/types/assignment";
 
 export default function PolicyDetailPage() {
   const { user, loading } = useAuth();
@@ -13,8 +15,11 @@ export default function PolicyDetailPage() {
   const id = params.id as string;
 
   const [policy, setPolicy] = useState<Policy | null>(null);
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
+  const [acknowledgment, setAcknowledgment] = useState<Acknowledgment | null>(null);
   const [fetching, setFetching] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [acknowledging, setAcknowledging] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) router.push(`/login?next=/policies/${id}`);
@@ -22,8 +27,14 @@ export default function PolicyDetailPage() {
 
   useEffect(() => {
     if (!user) return;
-    getPolicy(id).then((p) => {
+    Promise.all([
+      getPolicy(id),
+      getAssignment(id),
+      getAcknowledgment(id, user.uid),
+    ]).then(([p, a, ack]) => {
       setPolicy(p);
+      setAssignment(a);
+      setAcknowledgment(ack);
       setFetching(false);
     });
   }, [user, id]);
@@ -34,6 +45,17 @@ export default function PolicyDetailPage() {
     await deletePolicy(id);
     router.push("/policies");
   }
+
+  async function handleAcknowledge() {
+    if (!user || !policy) return;
+    setAcknowledging(true);
+    await acknowledgePolicy(id, user.uid, policy.version);
+    const ack = await getAcknowledgment(id, user.uid);
+    setAcknowledgment(ack);
+    setAcknowledging(false);
+  }
+
+  const isAssigned = assignment?.assignedTo.includes(user?.uid ?? "") ?? false;
 
   if (loading || fetching) {
     return (
@@ -84,6 +106,12 @@ export default function PolicyDetailPage() {
         </div>
         <div className="flex gap-3 mt-1 shrink-0">
           <Link
+            href={`/policies/${id}/assign`}
+            className="text-sm text-indigo-600 hover:underline"
+          >
+            Assign
+          </Link>
+          <Link
             href={`/policies/${id}/edit`}
             className="text-sm text-indigo-600 hover:underline"
           >
@@ -98,6 +126,62 @@ export default function PolicyDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* Acknowledgment banner for assigned users */}
+      {isAssigned && (
+        <div
+          className={`mb-6 flex items-center justify-between px-4 py-3 rounded-lg border ${
+            acknowledgment
+              ? "border-green-200 bg-green-50"
+              : "border-yellow-200 bg-yellow-50"
+          }`}
+        >
+          {acknowledgment ? (
+            <div>
+              <p className="text-sm font-medium text-green-700">
+                You acknowledged this policy (v{acknowledgment.policyVersion})
+              </p>
+              <p className="text-xs text-green-500 mt-0.5">
+                {acknowledgment.acknowledgedAt.toLocaleString()}
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-sm font-medium text-yellow-700">
+                This policy requires your acknowledgment
+              </p>
+              <p className="text-xs text-yellow-500 mt-0.5">
+                Please read the policy and click Acknowledge.
+              </p>
+            </div>
+          )}
+          {!acknowledgment && (
+            <button
+              onClick={handleAcknowledge}
+              disabled={acknowledging}
+              className="shrink-0 ml-4 px-4 py-1.5 text-sm font-medium bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-40"
+            >
+              {acknowledging ? "Saving…" : "Acknowledge"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Assignment status (admin view) */}
+      {assignment && assignment.assignedTo.length > 0 && (
+        <div className="mb-4 flex items-center gap-2 text-xs text-gray-400">
+          <span>
+            Assigned to {assignment.assignedTo.length} user
+            {assignment.assignedTo.length !== 1 ? "s" : ""}
+          </span>
+          <Link
+            href={`/policies/${id}/assign`}
+            className="text-indigo-500 hover:underline"
+          >
+            Manage
+          </Link>
+        </div>
+      )}
 
       <div
         className="prose max-w-none bg-white border border-gray-200 rounded-lg p-6"
